@@ -1,0 +1,27 @@
+{% extends 'base.html.twig' %}
+{% block title %}Produits et allergènes{% endblock %}
+{% block body %}
+<h1>Produits et allergènes</h1>
+<p><a href="{{ path('gestion') }}">Retour au tableau de bord</a></p>
+<section><h2>Rechercher un produit par code-barres</h2>
+<form method="post" class="row">
+    <input type="hidden" name="_token" value="{{ csrf_token('allergenes') }}">
+    <input type="hidden" name="operation" value="rechercher">
+    <label>Ingrédient <select name="ingredient" required>{% for id, ingredient in ingredients %}<option value="{{ id }}">{{ ingredient.nom }}</option>{% endfor %}</select></label>
+    <label>Code-barres <input name="code" pattern="[0-9]{8,14}" inputmode="numeric" required></label>
+    <button>Importer depuis Open Food Facts</button>
+</form></section>
+{% for produit in produits %}
+    <section><h2>{{ produit.nom }}</h2>
+    <p>{{ produit.ingredient }} · {{ produit.code_barres }}</p>
+    <p>{{ produit.allergenes ? produit.allergenes|join(', ') : 'Information absente ou incomplète.' }}</p>
+    <p>{{ produit.etat == 'confirme' ? 'Confirmé' : 'À vérifier' }}</p>
+    <form method="post">
+        <input type="hidden" name="_token" value="{{ csrf_token('allergenes') }}">
+        <input type="hidden" name="operation" value="valider">
+        <input type="hidden" name="produit" value="{{ produit.id }}">
+        {% if produit.allergenes %}<button name="decision" value="confirme">Confirmer après lecture de l’emballage</button>{% endif %}
+        {% if produit.etat == 'confirme' %}<button name="decision" value="a_verifier">Signaler une incohérence</button>{% endif %}
+    </form></section>
+{% else %}<p>Aucun produit associé pour le moment.</p>{% endfor %}
+{% endblock %}

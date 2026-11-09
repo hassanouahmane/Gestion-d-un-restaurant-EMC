@@ -2,6 +2,7 @@
 
 namespace App\Controller;
 
+use App\Service\Allergenes;
 use App\Service\Restaurant;
 use App\Service\Unites;
 use Doctrine\DBAL\Connection;
@@ -18,11 +19,14 @@ final class RestaurantController extends AbstractController
     }
 
     #[Route('/', name: 'accueil', methods: ['GET'])]
-    public function accueil(): Response
+    public function accueil(Allergenes $allergenes): Response
     {
-        return $this->render('restaurant/carte.html.twig', [
-            'plats' => $this->restaurant->carte(), 'menus' => $this->restaurant->menus(),
-        ]);
+        $plats = $this->restaurant->carte();
+        foreach ($plats as $id => &$plat) {
+            $plat['allergenes'] = $allergenes->pourPlat((int) $id);
+        }
+
+        return $this->render('restaurant/carte.html.twig', ['plats' => $plats, 'menus' => $this->restaurant->menus()]);
     }
 
     #[Route('/connexion', name: 'connexion', methods: ['GET', 'POST'])]
@@ -144,12 +148,43 @@ final class RestaurantController extends AbstractController
         return $this->render('restaurant/achats.html.twig', [
             'fournisseurs' => $this->db->fetchAllAssociative('SELECT id, nom FROM fournisseur ORDER BY nom'),
             'ingredients' => $this->restaurant->stocks(),
+            'produits' => $this->db->fetchAllAssociative('SELECT id, nom, code_barres FROM produit_achete ORDER BY nom'),
             'achats' => $this->db->fetchAllAssociative(
                 'SELECT a.id, a.date_achat, a.statut, f.nom FROM achat a JOIN fournisseur f ON f.id = a.fournisseur_id ORDER BY a.id DESC',
             ),
             'lignes' => $this->db->fetchAllAssociative(
                 'SELECT l.*, i.nom FROM ligne_achat l JOIN ingredient i ON i.id = l.ingredient_id ORDER BY l.id DESC',
             ),
+        ]);
+    }
+
+    #[Route('/gestion/allergenes', name: 'gestion_allergenes', methods: ['GET', 'POST'])]
+    public function allergenes(Request $request, Allergenes $allergenes): Response
+    {
+        if ($request->isMethod('POST')) {
+            $this->verifierFormulaire($request, 'allergenes');
+            try {
+                if ($request->request->getString('operation') === 'rechercher') {
+                    $allergenes->rattacher($request->request->getInt('ingredient'), trim($request->request->getString('code')));
+                } else {
+                    $allergenes->valider($request->request->getInt('produit'), $request->request->getString('decision'));
+                }
+                $this->addFlash('succes', 'Fiche produit mise à jour.');
+            } catch (\DomainException $exception) {
+                $this->addFlash('erreur', $exception->getMessage());
+            }
+
+            return $this->redirectToRoute('gestion_allergenes');
+        }
+        $produits = $this->db->fetchAllAssociative(
+            'SELECT p.*, i.nom AS ingredient FROM produit_achete p JOIN ingredient i ON i.id = p.ingredient_id ORDER BY p.nom',
+        );
+        foreach ($produits as &$produit) {
+            $produit['allergenes'] = $produit['allergenes'] === null ? null : json_decode($produit['allergenes'], true, 512, JSON_THROW_ON_ERROR);
+        }
+
+        return $this->render('restaurant/allergenes.html.twig', [
+            'ingredients' => $this->restaurant->stocks(), 'produits' => $produits,
         ]);
     }
 
@@ -185,9 +220,14 @@ final class RestaurantController extends AbstractController
             if ($convertie < 0.00005 || $convertie > 9999999999.9999) {
                 throw new \DomainException('La quantité convertie dépasse la précision du stock.');
             }
+            $produit = $request->request->getInt('produit');
+            if ($produit && (int) $this->db->fetchOne('SELECT ingredient_id FROM produit_achete WHERE id = ?', [$produit]) !== $ingredient) {
+                throw new \DomainException('Ce produit doit être rattaché à l’ingrédient acheté.');
+            }
             $this->db->insert('ligne_achat', [
                 'achat_id' => $achat, 'ingredient_id' => $ingredient, 'unite_achat' => $unite,
                 'quantite' => Unites::decimal($quantite), 'prix_unitaire' => Unites::decimal($prix, 2),
+                'produit_achete_id' => $produit ?: null,
             ]);
         });
     }

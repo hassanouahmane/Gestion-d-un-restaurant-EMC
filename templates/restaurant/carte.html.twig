@@ -7,6 +7,8 @@
         <article>
             <h2>{{ plat.nom }}</h2>
             <p>{{ plat.prix_vente|number_format(2, ',', ' ') }} DH · {{ plat.disponible ? 'Disponible' : 'Indisponible' }}</p>
+            {% if plat.allergenes.tags %}<p>Allergènes confirmés · {{ plat.allergenes.tags|join(', ')|replace({'en:': '', 'fr:': ''}) }}</p>{% endif %}
+            {% if plat.allergenes.incomplet %}<p>Information allergènes à vérifier auprès de l’équipe.</p>{% endif %}
         </article>
     {% else %}<p>La carte est en préparation.</p>{% endfor %}
 </div>
@@ -20,6 +22,7 @@
                     <li>{{ groupe.libelle }} · {% for id in groupe.plats %}{{ plats[id].nom }}{% if not loop.last %}, {% endif %}{% endfor %}</li>
                 {% endfor %}
             </ul>
+            <p>Consulte les allergènes de chaque plat choisi ci-dessus.</p>
         </section>
     {% endfor %}
 {% endif %}

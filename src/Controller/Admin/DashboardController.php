@@ -39,5 +39,6 @@ final class DashboardController extends AbstractDashboardController
         yield MenuItem::linkTo(FournisseurCrudController::class, 'Fournisseurs');
         yield MenuItem::linkToRoute('Achats', 'fa fa-truck', 'gestion_achats');
         yield MenuItem::linkToRoute('Stocks', 'fa fa-boxes-stacked', 'gestion_stock');
+        yield MenuItem::linkToRoute('Produits et allergènes', 'fa fa-barcode', 'gestion_allergenes');
     }
 }

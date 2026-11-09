@@ -2,7 +2,7 @@
 {% block title %}Tableau de bord{% endblock %}
 {% block body %}
 <h1>Tableau de bord du gérant</h1>
-<p><a href="{{ path('gestion_stock') }}">Stock et inventaire</a> · <a href="{{ path('gestion_achats') }}">Achats</a></p>
+<p><a href="{{ path('gestion_stock') }}">Stock et inventaire</a> · <a href="{{ path('gestion_achats') }}">Achats</a> · <a href="{{ path('gestion_allergenes') }}">Produits et allergènes</a></p>
 <section><h2>Meilleures ventes et marge par plat</h2>
 <div class="scroll"><table><thead><tr><th>Plat</th><th>Portions servies</th><th>Ventes (DH)</th><th>Marge brute (DH)</th></tr></thead><tbody>
 {% for plat in ventes %}
