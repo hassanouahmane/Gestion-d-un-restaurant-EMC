@@ -276,6 +276,41 @@ final class Restaurant
         });
     }
 
+    public function ventes(): array
+    {
+        return $this->db->fetchAllAssociative(
+            "SELECT p.nom, SUM(s.quantite) AS quantite, SUM(s.quantite * s.prix_vente_unitaire) AS ventes,
+                    CASE WHEN COUNT(s.cout_unitaire) = COUNT(*) THEN SUM(s.quantite * (s.prix_vente_unitaire - s.cout_unitaire)) END AS marge
+             FROM plat_service s JOIN plat p ON s.plat_id = p.id WHERE s.statut = 'servi'
+             GROUP BY p.id, p.nom ORDER BY quantite DESC, p.nom",
+        );
+    }
+
+    public function suggestions(): array
+    {
+        $suggestions = [];
+        $stocks = $this->stocks();
+        $reserves = $this->reserves();
+        $objectif = [];
+        foreach ($this->db->fetchFirstColumn('SELECT id FROM plat') as $plat) {
+            try {
+                foreach ($this->besoins((int) $plat) as $id => $quantite) {
+                    $objectif[$id] = ($objectif[$id] ?? 0) + $quantite * 5;
+                }
+            } catch (\DomainException) {
+                continue;
+            }
+        }
+        foreach ($objectif as $id => $quantite) {
+            $manque = round($quantite + ($reserves[$id] ?? 0) - (float) $stocks[$id]['stock'], 4);
+            if ($manque > 0) {
+                $suggestions[] = ['nom' => $stocks[$id]['nom'], 'unite' => $stocks[$id]['unite_stock'], 'quantite' => $manque];
+            }
+        }
+
+        return $suggestions;
+    }
+
     private function dosesIngredients(int $recette, float $facteur): array
     {
         $besoins = [];

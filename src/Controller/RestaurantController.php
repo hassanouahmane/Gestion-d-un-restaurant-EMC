@@ -3,6 +3,8 @@
 namespace App\Controller;
 
 use App\Service\Restaurant;
+use App\Service\Unites;
+use Doctrine\DBAL\Connection;
 use Symfony\Bundle\FrameworkBundle\Controller\AbstractController;
 use Symfony\Component\HttpFoundation\Request;
 use Symfony\Component\HttpFoundation\Response;
@@ -11,7 +13,7 @@ use Symfony\Component\Security\Http\Authentication\AuthenticationUtils;
 
 final class RestaurantController extends AbstractController
 {
-    public function __construct(private \Doctrine\DBAL\Connection $db, private Restaurant $restaurant)
+    public function __construct(private Connection $db, private Restaurant $restaurant)
     {
     }
 
@@ -78,10 +80,132 @@ final class RestaurantController extends AbstractController
         return $this->redirectToRoute('cuisine');
     }
 
+    #[Route('/gestion', name: 'gestion', methods: ['GET'])]
+    public function gestion(): Response
+    {
+        return $this->render('restaurant/gestion.html.twig', [
+            'ventes' => $this->restaurant->ventes(), 'suggestions' => $this->restaurant->suggestions(),
+        ]);
+    }
+
+    #[Route('/gestion/stock', name: 'gestion_stock', methods: ['GET', 'POST'])]
+    public function stock(Request $request): Response
+    {
+        if ($request->isMethod('POST')) {
+            $this->verifierFormulaire($request, 'stock');
+            try {
+                $quantite = $this->quantite($request);
+                $ingredient = $request->request->getInt('ingredient');
+                if ($request->request->getString('operation') === 'perte') {
+                    $this->restaurant->perte($ingredient, $quantite, $request->request->getString('motif'));
+                } else {
+                    $this->restaurant->compter($ingredient, $quantite);
+                }
+                $this->addFlash('succes', 'Opération enregistrée.');
+            } catch (\DomainException $exception) {
+                $this->addFlash('erreur', $exception->getMessage());
+            }
+
+            return $this->redirectToRoute('gestion_stock');
+        }
+
+        return $this->render('restaurant/stock.html.twig', [
+            'stocks' => $this->restaurant->stocks(),
+            'inventaires' => $this->db->fetchAllAssociative(
+                'SELECT v.*, i.nom, i.unite_stock, v.stock_compte - v.stock_theorique AS ecart
+                 FROM inventaire v JOIN ingredient i ON i.id = v.ingredient_id ORDER BY v.id DESC LIMIT 50',
+            ),
+            'mouvements' => $this->db->fetchAllAssociative(
+                'SELECT m.*, i.nom, i.unite_stock FROM mouvement_stock m JOIN ingredient i ON i.id = m.ingredient_id ORDER BY m.id DESC LIMIT 50',
+            ),
+        ]);
+    }
+
+    #[Route('/gestion/achats', name: 'gestion_achats', methods: ['GET', 'POST'])]
+    public function achats(Request $request): Response
+    {
+        if ($request->isMethod('POST')) {
+            $this->verifierFormulaire($request, 'achats');
+            try {
+                match ($request->request->getString('operation')) {
+                    'creer' => $this->creerAchat($request),
+                    'ligne' => $this->ajouterLigneAchat($request),
+                    'recevoir' => $this->restaurant->recevoir($request->request->getInt('achat')),
+                    default => throw new \DomainException('Opération inconnue.'),
+                };
+                $this->addFlash('succes', 'Achat mis à jour.');
+            } catch (\DomainException $exception) {
+                $this->addFlash('erreur', $exception->getMessage());
+            }
+
+            return $this->redirectToRoute('gestion_achats');
+        }
+
+        return $this->render('restaurant/achats.html.twig', [
+            'fournisseurs' => $this->db->fetchAllAssociative('SELECT id, nom FROM fournisseur ORDER BY nom'),
+            'ingredients' => $this->restaurant->stocks(),
+            'achats' => $this->db->fetchAllAssociative(
+                'SELECT a.id, a.date_achat, a.statut, f.nom FROM achat a JOIN fournisseur f ON f.id = a.fournisseur_id ORDER BY a.id DESC',
+            ),
+            'lignes' => $this->db->fetchAllAssociative(
+                'SELECT l.*, i.nom FROM ligne_achat l JOIN ingredient i ON i.id = l.ingredient_id ORDER BY l.id DESC',
+            ),
+        ]);
+    }
+
+    private function creerAchat(Request $request): void
+    {
+        $fournisseur = $request->request->getInt('fournisseur');
+        if (!$this->db->fetchOne('SELECT 1 FROM fournisseur WHERE id = ?', [$fournisseur])) {
+            throw new \DomainException('Fournisseur inconnu.');
+        }
+        $this->db->insert('achat', [
+            'fournisseur_id' => $fournisseur, 'statut' => 'brouillon',
+            'date_achat' => (new \DateTimeImmutable('now', new \DateTimeZone('Africa/Casablanca')))->format('Y-m-d'),
+        ]);
+    }
+
+    private function ajouterLigneAchat(Request $request): void
+    {
+        $this->db->transactional(function () use ($request): void {
+            $this->db->fetchFirstColumn('SELECT id FROM ingredient ORDER BY id FOR UPDATE');
+            $achat = $request->request->getInt('achat');
+            if ($this->db->fetchOne('SELECT statut FROM achat WHERE id = ? FOR UPDATE', [$achat]) !== 'brouillon') {
+                throw new \DomainException('Cet achat ne peut plus être modifié.');
+            }
+            $ingredient = $request->request->getInt('ingredient');
+            $unite = $request->request->getString('unite');
+            $quantite = $this->quantite($request);
+            $prix = $this->quantite($request, 'prix');
+            $stockUnite = $this->db->fetchOne('SELECT unite_stock FROM ingredient WHERE id = ?', [$ingredient]);
+            if (!$stockUnite || $quantite <= 0 || $prix > 9999999999.99) {
+                throw new \DomainException('Ingrédient, quantité ou prix invalide.');
+            }
+            $convertie = Unites::convertir($quantite, $unite, $stockUnite);
+            if ($convertie < 0.00005 || $convertie > 9999999999.9999) {
+                throw new \DomainException('La quantité convertie dépasse la précision du stock.');
+            }
+            $this->db->insert('ligne_achat', [
+                'achat_id' => $achat, 'ingredient_id' => $ingredient, 'unite_achat' => $unite,
+                'quantite' => Unites::decimal($quantite), 'prix_unitaire' => Unites::decimal($prix, 2),
+            ]);
+        });
+    }
+
     private function verifierFormulaire(Request $request, string $action): void
     {
         if (!$this->isCsrfTokenValid($action, $request->request->getString('_token'))) {
             throw $this->createAccessDeniedException('Jeton de formulaire invalide.');
         }
+    }
+
+    private function quantite(Request $request, string $champ = 'quantite'): float
+    {
+        $nombre = str_replace(',', '.', trim($request->request->getString($champ)));
+        if (!preg_match('/^\d{1,10}(\.\d{1,4})?$/D', $nombre)) {
+            throw new \DomainException('Entre une quantité ou un prix valide.');
+        }
+
+        return (float) $nombre;
     }
 }

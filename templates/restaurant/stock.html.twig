@@ -1,0 +1,30 @@
+{% extends 'base.html.twig' %}
+{% block title %}Stock et inventaire{% endblock %}
+{% block body %}
+<h1>Stock et inventaire</h1>
+<p><a href="{{ path('gestion') }}">Retour au tableau de bord</a></p>
+{% for operation, libelle in {compter: 'Enregistrer un comptage', perte: 'Enregistrer une perte'} %}
+    <section><h2>{{ libelle }}</h2>
+    <form method="post" class="row">
+        <input type="hidden" name="_token" value="{{ csrf_token('stock') }}">
+        <input type="hidden" name="operation" value="{{ operation }}">
+        <label>Ingrédient <select name="ingredient" required>{% for id, stock in stocks %}<option value="{{ id }}">{{ stock.nom }} ({{ stock.unite_stock }})</option>{% endfor %}</select></label>
+        <label>{{ operation == 'perte' ? 'Quantité perdue' : 'Quantité comptée' }} <input name="quantite" type="number" step="0.0001" min="0" required></label>
+        {% if operation == 'perte' %}<label>Motif <select name="motif"><option>Casse</option><option>Péremption</option><option>Erreur en cuisine</option></select></label>{% endif %}
+        <button>Enregistrer</button>
+    </form></section>
+{% endfor %}
+<section><h2>Stock actuel</h2><ul>{% for stock in stocks %}<li>{{ stock.nom }} · {{ stock.stock }} {{ stock.unite_stock }}</li>{% endfor %}</ul></section>
+<section><h2>Écarts d’inventaire</h2>
+<div class="scroll"><table><thead><tr><th>Date</th><th>Ingrédient</th><th>Théorique</th><th>Compté</th><th>Écart</th></tr></thead><tbody>
+{% for ligne in inventaires %}
+<tr><td>{{ ligne.date_comptage }}</td><td>{{ ligne.nom }} ({{ ligne.unite_stock }})</td><td>{{ ligne.stock_theorique }}</td><td>{{ ligne.stock_compte }}</td><td>{{ ligne.ecart }}</td></tr>
+{% else %}<tr><td colspan="5">Aucun comptage enregistré.</td></tr>{% endfor %}
+</tbody></table></div></section>
+<section><h2>Derniers mouvements</h2>
+<div class="scroll"><table><thead><tr><th>Date</th><th>Ingrédient</th><th>Type</th><th>Quantité</th><th>Motif</th></tr></thead><tbody>
+{% for ligne in mouvements %}
+<tr><td>{{ ligne.date_mouvement }}</td><td>{{ ligne.nom }}</td><td>{{ ligne.type }}</td><td>{{ ligne.quantite }} {{ ligne.unite_stock }}</td><td>{{ ligne.motif }}</td></tr>
+{% else %}<tr><td colspan="5">Aucun mouvement enregistré.</td></tr>{% endfor %}
+</tbody></table></div></section>
+{% endblock %}

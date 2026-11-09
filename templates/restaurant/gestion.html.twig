@@ -1,0 +1,16 @@
+{% extends 'base.html.twig' %}
+{% block title %}Tableau de bord{% endblock %}
+{% block body %}
+<h1>Tableau de bord du gérant</h1>
+<p><a href="{{ path('gestion_stock') }}">Stock et inventaire</a> · <a href="{{ path('gestion_achats') }}">Achats</a></p>
+<section><h2>Meilleures ventes et marge par plat</h2>
+<div class="scroll"><table><thead><tr><th>Plat</th><th>Portions servies</th><th>Ventes (DH)</th><th>Marge brute (DH)</th></tr></thead><tbody>
+{% for plat in ventes %}
+    <tr><td>{{ plat.nom }}</td><td>{{ plat.quantite }}</td><td>{{ plat.ventes }}</td><td>{{ plat.marge ?? 'Coût incomplet' }}</td></tr>
+{% else %}<tr><td colspan="4">Aucun plat servi.</td></tr>{% endfor %}
+</tbody></table></div></section>
+<section><h2>Suggestions de réapprovisionnement</h2>
+<p>Objectif de cinq portions par plat, en plus des commandes réservées.</p>
+<ul>{% for ligne in suggestions %}<li>{{ ligne.nom }} · {{ ligne.quantite }} {{ ligne.unite }}</li>{% else %}<li>Aucun achat suggéré.</li>{% endfor %}</ul>
+</section>
+{% endblock %}

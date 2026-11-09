@@ -23,6 +23,7 @@ final class DashboardController extends AbstractDashboardController
 
     public function configureMenuItems(): iterable
     {
+        yield MenuItem::linkToRoute('Tableau de bord', 'fa fa-chart-line', 'gestion');
         yield MenuItem::section('Carte et recettes');
         yield MenuItem::linkTo(PlatCrudController::class, 'Plats', 'fa fa-utensils');
         yield MenuItem::linkTo(IngredientCrudController::class, 'Ingrédients');
@@ -36,5 +37,7 @@ final class DashboardController extends AbstractDashboardController
         yield MenuItem::section('Restaurant');
         yield MenuItem::linkTo(TableSalleCrudController::class, 'Tables');
         yield MenuItem::linkTo(FournisseurCrudController::class, 'Fournisseurs');
+        yield MenuItem::linkToRoute('Achats', 'fa fa-truck', 'gestion_achats');
+        yield MenuItem::linkToRoute('Stocks', 'fa fa-boxes-stacked', 'gestion_stock');
     }
 }
