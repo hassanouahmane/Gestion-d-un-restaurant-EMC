@@ -1,0 +1,45 @@
+{% extends 'base.html.twig' %}
+{% block title %}Prise de commande{% endblock %}
+{% block body %}
+<h1>Prise de commande</h1>
+<form method="post" id="commande">
+    <input type="hidden" name="_token" value="{{ csrf_token('commande') }}">
+    <label>Table <select name="table" required>
+        <option value="">Choisir une table</option>
+        {% for table in tables %}<option value="{{ table.id }}">{{ table.numero }} ({{ table.capacite }} places)</option>{% endfor %}
+    </select></label>
+    <div id="lignes"></div>
+    <button type="button" id="ajouter">Ajouter une ligne</button>
+    <button>Envoyer en cuisine</button>
+</form>
+<template id="ligne">
+    <fieldset>
+        <legend>Article</legend>
+        <label>Plat ou menu <select data-field="article" required>
+            <option value="">Choisir un article</option>
+            <optgroup label="Plats">
+                {% for id, plat in plats %}<option value="plat:{{ id }}" {{ plat.disponible ? '' : 'disabled' }}>{{ plat.nom }}{{ plat.disponible ? '' : ' · indisponible' }}</option>{% endfor %}
+            </optgroup>
+            <optgroup label="Menus">
+                {% for id, menu in menus %}<option value="menu:{{ id }}" {{ menu.groupes ? '' : 'disabled' }}>{{ menu.nom }}</option>{% endfor %}
+            </optgroup>
+        </select></label>
+        <label>Quantité <input data-field="quantite" type="number" min="1" max="60" value="1" required></label>
+        <div data-choix></div>
+        <button type="button" data-retirer>Retirer</button>
+    </fieldset>
+</template>
+{% for menuId, menu in menus %}
+    <template id="menu-{{ menuId }}">
+        {% for id, groupe in menu.groupes %}
+            <label>{{ groupe.libelle }} <select data-field="choix" data-groupe="{{ id }}" required>
+                <option value="">Choisir un plat</option>
+                {% for platId in groupe.plats %}
+                    <option value="{{ platId }}" {{ plats[platId].disponible ? '' : 'disabled' }}>{{ plats[platId].nom }}{{ plats[platId].disponible ? '' : ' · indisponible' }}</option>
+                {% endfor %}
+            </select></label>
+        {% endfor %}
+    </template>
+{% endfor %}
+<script src="{{ asset('commande.js') }}" defer></script>
+{% endblock %}

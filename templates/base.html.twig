@@ -9,6 +9,8 @@
 <body>
     <header><nav aria-label="Navigation principale">
         <a href="{{ path('accueil') }}"><strong>Restaurant</strong></a>
+        {% if is_granted('ROLE_SERVEUR') %}<a href="{{ path('salle') }}">Salle</a>{% endif %}
+        {% if is_granted('ROLE_CUISINE') %}<a href="{{ path('cuisine') }}">Cuisine</a>{% endif %}
         {% if is_granted('ROLE_GERANT') %}<a href="{{ path('admin') }}">Administration</a>{% endif %}
         {% if app.user %}
             <form method="post" action="{{ path('deconnexion') }}">

@@ -1,0 +1,27 @@
+{% extends 'base.html.twig' %}
+{% block title %}Cuisine{% endblock %}
+{% block body %}
+<h1>Cuisine</h1>
+{% set libelles = {a_preparer: 'À préparer', en_cours: 'En cours', pret: 'Prêt', servi: 'Servi', annule: 'Annulé'} %}
+{% set suivants = {a_preparer: 'en_cours', en_cours: 'pret', pret: 'servi'} %}
+<div class="scroll"><table>
+    <thead><tr><th>Commande</th><th>Table</th><th>Plat</th><th>Quantité</th><th>Statut</th><th>Action</th></tr></thead>
+    <tbody>
+    {% for plat in service %}
+        <tr>
+            <td>#{{ plat.commande }}</td><td>{{ plat.numero }}</td><td>{{ plat.nom }}</td><td>{{ plat.quantite }}</td>
+            <td>{{ libelles[plat.statut]|default(plat.statut) }}</td>
+            <td>
+                {% if suivants[plat.statut] is defined %}
+                    <form method="post" action="{{ path('cuisine_statut', {id: plat.id}) }}">
+                        <input type="hidden" name="_token" value="{{ csrf_token('service-' ~ plat.id) }}">
+                        <button name="statut" value="{{ suivants[plat.statut] }}">{{ libelles[suivants[plat.statut]] }}</button>
+                        <button name="statut" value="annule">Annuler</button>
+                    </form>
+                {% endif %}
+            </td>
+        </tr>
+    {% else %}<tr><td colspan="6">Aucun plat en cuisine.</td></tr>{% endfor %}
+    </tbody>
+</table></div>
+{% endblock %}
