@@ -6,6 +6,12 @@ use Doctrine\DBAL\Connection;
 
 final class Restaurant
 {
+    private const TRANSITIONS = [
+        'a_preparer' => ['en_cours', 'annule'],
+        'en_cours' => ['pret', 'annule'],
+        'pret' => ['servi', 'annule'],
+    ];
+
     public function __construct(private Connection $db)
     {
     }
@@ -87,6 +93,135 @@ final class Restaurant
         }
 
         return $menus;
+    }
+
+    public function commander(int $table, array $articles): int
+    {
+        if (count($articles) < 1 || count($articles) > 30) {
+            throw new \DomainException('Une commande doit contenir entre 1 et 30 lignes.');
+        }
+
+        return $this->db->transactional(function () use ($table, $articles): int {
+            $this->verrouillerStock();
+            $stocks = $this->stocks();
+            $reserves = $this->reserves();
+            $menus = $this->menus();
+            if (!$this->db->fetchOne('SELECT 1 FROM table_salle WHERE id = ?', [$table])) {
+                throw new \DomainException('Table inconnue.');
+            }
+            $this->db->insert('commande', ['table_salle_id' => $table, 'date_commande' => $this->maintenant(), 'statut' => 'envoyee']);
+            $commande = (int) $this->db->lastInsertId();
+
+            foreach ($articles as $article) {
+                $quantite = filter_var($article['quantite'] ?? null, FILTER_VALIDATE_INT, ['options' => ['min_range' => 1, 'max_range' => 60]]);
+                if ($quantite === false || !preg_match('/^(plat|menu):([1-9][0-9]*)$/D', (string) ($article['article'] ?? ''), $match)) {
+                    throw new \DomainException('Article ou quantité invalide.');
+                }
+                $id = (int) $match[2];
+                $estMenu = $match[1] === 'menu';
+                $choix = [];
+                if ($estMenu) {
+                    $menu = $menus[$id] ?? null;
+                    if (!$menu || $menu['groupes'] === []) {
+                        throw new \DomainException('Ce menu ne contient aucun groupe de choix.');
+                    }
+                    $prix = (string) $menu['prix_vente'];
+                    foreach ($menu['groupes'] as $groupeId => $groupe) {
+                        $plat = filter_var($article['choix'][$groupeId] ?? null, FILTER_VALIDATE_INT);
+                        if ($plat === false || !in_array($plat, array_map('intval', $groupe['plats']), true)) {
+                            throw new \DomainException('Sélectionne un plat autorisé dans chaque groupe du menu.');
+                        }
+                        $choix[$groupeId] = $plat;
+                    }
+                } else {
+                    $prix = $this->db->fetchOne('SELECT prix_vente FROM plat WHERE id = ?', [$id]);
+                    if ($prix === false) {
+                        throw new \DomainException('Plat inconnu.');
+                    }
+                }
+
+                $this->db->insert('ligne_commande', [
+                    'commande_id' => $commande, 'plat_id' => $estMenu ? null : $id, 'menu_id' => $estMenu ? $id : null,
+                    'quantite' => $quantite, 'prix_unitaire_applique' => $prix,
+                ]);
+                $ligne = (int) $this->db->lastInsertId();
+                $plats = $estMenu ? $choix : [$id];
+                $prixRestant = (int) round((float) $prix * 100);
+                $platsRestants = count($plats);
+                foreach ($plats as $groupeId => $plat) {
+                    if ($estMenu) {
+                        $this->db->insert('plat_choisi', ['ligne_commande_id' => $ligne, 'groupe_choix_id' => $groupeId, 'plat_id' => $plat]);
+                    }
+                    $besoins = $this->quantifier($this->besoins($plat), $quantite);
+                    $this->verifierStock($besoins, $stocks, $reserves);
+                    foreach ($besoins as $ingredient => $besoin) {
+                        $reserves[$ingredient] = ($reserves[$ingredient] ?? 0) + $besoin;
+                    }
+                    $partPrix = intdiv($prixRestant, $platsRestants--);
+                    $prixRestant -= $partPrix;
+                    $this->db->insert('plat_service', [
+                        'ligne_commande_id' => $ligne, 'plat_id' => $plat, 'quantite' => $quantite,
+                        'statut' => 'a_preparer', 'besoins' => json_encode($besoins, JSON_THROW_ON_ERROR),
+                        'prix_vente_unitaire' => Unites::decimal($partPrix / 100, 2),
+                    ]);
+                }
+            }
+
+            return $commande;
+        });
+    }
+
+    public function changerStatut(int $id, string $statut): void
+    {
+        $this->db->transactional(function () use ($id, $statut): void {
+            $this->verrouillerStock();
+            $plat = $this->db->fetchAssociative('SELECT * FROM plat_service WHERE id = ? FOR UPDATE', [$id]);
+            if (!$plat || !in_array($statut, self::TRANSITIONS[$plat['statut']] ?? [], true)) {
+                throw new \DomainException('Ce changement de statut est impossible.');
+            }
+
+            $modifications = ['statut' => $statut];
+            if ($statut === 'servi') {
+                $besoins = json_decode($plat['besoins'], true, 512, JSON_THROW_ON_ERROR);
+                $stocks = $this->stocks();
+                $this->verifierStock($besoins, $stocks);
+                $cout = 0.0;
+                $coutConnu = true;
+                foreach ($besoins as $ingredient => $quantite) {
+                    $achat = $this->db->fetchAssociative(
+                        "SELECT l.prix_unitaire, l.unite_achat FROM ligne_achat l JOIN achat a ON a.id = l.achat_id
+                         WHERE l.ingredient_id = ? AND a.statut = 'recu' ORDER BY a.date_achat DESC, l.id DESC LIMIT 1",
+                        [$ingredient],
+                    );
+                    if ($achat) {
+                        $cout += (float) $achat['prix_unitaire'] * Unites::convertir($quantite, $stocks[$ingredient]['unite_stock'], $achat['unite_achat']);
+                    } else {
+                        $coutConnu = false;
+                    }
+                    $this->mouvement($ingredient, 'sortie', $quantite, "Service du plat #$id");
+                }
+                $modifications['cout_unitaire'] = $coutConnu ? Unites::decimal($cout / (int) $plat['quantite'], 2) : null;
+            }
+            $this->db->update('plat_service', $modifications, ['id' => $id]);
+            $commande = $this->db->fetchOne('SELECT commande_id FROM ligne_commande WHERE id = ?', [$plat['ligne_commande_id']]);
+            $restants = $this->db->fetchOne(
+                "SELECT COUNT(*) FROM plat_service s JOIN ligne_commande l ON s.ligne_commande_id = l.id
+                 WHERE l.commande_id = ? AND s.statut NOT IN ('servi', 'annule')", [$commande],
+            );
+            if ((int) $restants === 0) {
+                $this->db->update('commande', ['statut' => 'terminee'], ['id' => $commande]);
+            }
+        });
+    }
+
+    public function service(): array
+    {
+        return $this->db->fetchAllAssociative(
+            'SELECT s.id, s.statut, s.quantite, p.nom, t.numero, c.id AS commande
+             FROM plat_service s JOIN plat p ON s.plat_id = p.id JOIN ligne_commande l ON s.ligne_commande_id = l.id
+             JOIN commande c ON l.commande_id = c.id JOIN table_salle t ON t.id = c.table_salle_id
+             ORDER BY c.id DESC, s.id LIMIT 100',
+        );
     }
 
     public function recevoir(int $achat): void
