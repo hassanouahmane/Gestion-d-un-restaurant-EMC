@@ -1,0 +1,4 @@
+when@dev:
+    easyadmin:
+        resource: .
+        type: easyadmin.routes
