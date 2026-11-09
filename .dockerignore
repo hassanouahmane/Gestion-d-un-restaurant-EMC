@@ -1,0 +1,9 @@
+.git
+.DS_Store
+.env.local
+.env.local.php
+.env.*.local
+.env.prod
+vendor
+var
+public/bundles
