@@ -1,0 +1,31 @@
+security:
+    password_hashers:
+        App\Entity\Compte: auto
+    providers:
+        comptes:
+            entity:
+                class: App\Entity\Compte
+                property: identifiant
+    role_hierarchy:
+        ROLE_GERANT: [ROLE_SERVEUR, ROLE_CUISINE]
+    firewalls:
+        dev:
+            pattern: ^/(_profiler(/|$)|_wdt(/|$)|bundles/)
+            security: false
+        main:
+            lazy: true
+            provider: comptes
+            form_login:
+                login_path: connexion
+                check_path: connexion
+                enable_csrf: true
+                default_target_path: accueil
+            logout:
+                path: deconnexion
+                target: accueil
+                enable_csrf: true
+    access_control:
+        - { path: '^/admin(?:/|$)', roles: ROLE_GERANT }
+        - { path: '^/gestion(?:/|$)', roles: ROLE_GERANT }
+        - { path: '^/salle(?:/|$)', roles: ROLE_SERVEUR }
+        - { path: '^/cuisine(?:/|$)', roles: ROLE_CUISINE }

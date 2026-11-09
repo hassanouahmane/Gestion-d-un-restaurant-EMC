@@ -1,0 +1,26 @@
+{% extends 'base.html.twig' %}
+{% block title %}Carte du restaurant{% endblock %}
+{% block body %}
+<h1>Carte du restaurant</h1>
+<div class="grid">
+    {% for plat in plats %}
+        <article>
+            <h2>{{ plat.nom }}</h2>
+            <p>{{ plat.prix_vente|number_format(2, ',', ' ') }} DH · {{ plat.disponible ? 'Disponible' : 'Indisponible' }}</p>
+        </article>
+    {% else %}<p>La carte est en préparation.</p>{% endfor %}
+</div>
+{% if menus %}
+    <h2>Menus</h2>
+    {% for menu in menus %}
+        <section>
+            <h3>{{ menu.nom }} · {{ menu.prix_vente|number_format(2, ',', ' ') }} DH</h3>
+            <ul>
+                {% for groupe in menu.groupes %}
+                    <li>{{ groupe.libelle }} · {% for id in groupe.plats %}{{ plats[id].nom }}{% if not loop.last %}, {% endif %}{% endfor %}</li>
+                {% endfor %}
+            </ul>
+        </section>
+    {% endfor %}
+{% endif %}
+{% endblock %}

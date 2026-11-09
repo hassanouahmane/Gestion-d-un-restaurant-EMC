@@ -1,0 +1,29 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>{% block title %}Restaurant{% endblock %}</title>
+    <link rel="stylesheet" href="{{ asset('restaurant.css') }}">
+</head>
+<body>
+    <header><nav aria-label="Navigation principale">
+        <a href="{{ path('accueil') }}"><strong>Restaurant</strong></a>
+        {% if is_granted('ROLE_GERANT') %}<a href="{{ path('admin') }}">Administration</a>{% endif %}
+        {% if app.user %}
+            <form method="post" action="{{ path('deconnexion') }}">
+                <input type="hidden" name="_csrf_token" value="{{ csrf_token('logout') }}">
+                <button>Déconnexion</button>
+            </form>
+        {% else %}
+            <a href="{{ path('connexion') }}">Connexion équipe</a>
+        {% endif %}
+    </nav></header>
+    <main>
+        {% for type, messages in app.flashes %}
+            {% for message in messages %}<p class="message {{ type }}" role="status">{{ message }}</p>{% endfor %}
+        {% endfor %}
+        {% block body %}{% endblock %}
+    </main>
+</body>
+</html>
